@@ -1,0 +1,101 @@
+name: 03 - 🔗 ساخت فایل لینک‌های مستقیم
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-links:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: تنظیم گیت
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: تولید فایل لینک‌ها
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          OUTPUT_FILE="all_links.md"
+
+          # تابع رمزگذاری URL
+          urlencode() {
+            python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$1"
+          }
+
+          # اگر پوشه videos وجود نداشت، فایل خالی ایجاد کن
+          if [ ! -d "videos" ]; then
+            echo "📭 پوشه videos وجود ندارد." > "$OUTPUT_FILE"
+            git add "$OUTPUT_FILE"
+            git commit -m "🫙 پوشه videos خالی است [skip ci]"
+            git push origin HEAD:"$BRANCH"
+            exit 0
+          fi
+
+          echo "# 📥 لینک‌های مستقیم دانلود ویدیوها" > "$OUTPUT_FILE"
+          echo "" >> "$OUTPUT_FILE"
+          echo "برای دانلود با IDM کافی است روی هر لینک کلیک راست کرده و **Copy Link Address** را انتخاب کنید." >> "$OUTPUT_FILE"
+          echo "" >> "$OUTPUT_FILE"
+          echo "---" >> "$OUTPUT_FILE"
+          echo "" >> "$OUTPUT_FILE"
+
+          # پردازش هر پوشه داخل videos/
+          for folder in videos/*/; do
+            [ -d "$folder" ] || continue
+            FOLDER_NAME=$(basename "$folder")
+            FOLDER_ENCODED=$(urlencode "$FOLDER_NAME")
+
+            echo "## 🎬 $FOLDER_NAME" >> "$OUTPUT_FILE"
+            echo "" >> "$OUTPUT_FILE"
+
+            # نمایش تصویر thumbnail در صورت وجود
+            if [ -f "$folder/thumbnail.jpg" ]; then
+              THUMB_ENCODED=$(urlencode "thumbnail.jpg")
+              THUMB_LINK="https://github.com/${REPO_OWNER}/${REPO_NAME}/raw/${BRANCH}/videos/${FOLDER_ENCODED}/${THUMB_ENCODED}"
+              echo "<img src=\"$THUMB_LINK\" width=\"200\" align=\"left\" style=\"margin-right:15px;\">" >> "$OUTPUT_FILE"
+              echo "" >> "$OUTPUT_FILE"
+            fi
+
+            echo "| # | نام فایل | لینک مستقیم |" >> "$OUTPUT_FILE"
+            echo "|---|----------|-------------|" >> "$OUTPUT_FILE"
+
+            COUNTER=0
+            # لیست تمام فایل‌ها (غیر از thumbnail.jpg، README.md و subtitle.zip) و مرتب‌سازی
+            for file in $(find "$folder" -type f \( -not -name "thumbnail.jpg" -and -not -name "README.md" -and -not -name "subtitle.zip" \) | sort); do
+              FILENAME=$(basename "$file")
+              FILE_ENCODED=$(urlencode "$FILENAME")
+              RAW_LINK="https://github.com/${REPO_OWNER}/${REPO_NAME}/raw/${BRANCH}/videos/${FOLDER_ENCODED}/${FILE_ENCODED}"
+              COUNTER=$((COUNTER + 1))
+              echo "| $COUNTER | \`$FILENAME\` | [دانلود]($RAW_LINK) |" >> "$OUTPUT_FILE"
+            done
+
+            # اگر فایلی نبود
+            if [ "$COUNTER" -eq 0 ]; then
+              echo "| - | فایلی یافت نشد | - |" >> "$OUTPUT_FILE"
+            fi
+
+            echo "" >> "$OUTPUT_FILE"
+            echo "---" >> "$OUTPUT_FILE"
+            echo "" >> "$OUTPUT_FILE"
+          done
+
+          # افزودن فایل به گیت و ارسال
+          git add "$OUTPUT_FILE"
+          if git diff --cached --quiet; then
+            echo "ℹ️  فایل لینک‌ها تغییری نکرده است."
+          else
+            git commit -m "📎 بروزرسانی لینک‌های مستقیم [skip ci]"
+            git push origin HEAD:"$BRANCH"
+            echo "✅ فایل all_links.md با موفقیت ساخته و ارسال شد."
+          fi
