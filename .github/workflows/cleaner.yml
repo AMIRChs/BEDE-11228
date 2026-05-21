@@ -1,0 +1,56 @@
+name: 02 - 🗑️ پاکسازی ویدیوها
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'برای تأیید عبارت DELETE را وارد کنید'
+        required: true
+        default: ''
+        type: string
+
+jobs:
+  clean-videos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: بررسی تأیید
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DELETE" ]; then
+            echo "❌ تأیید نامعتبر. لطفاً فقط کلمه DELETE را وارد کنید."
+            exit 1
+          fi
+
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: تنظیم گیت
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: حذف پوشه videos
+        run: |
+          if [ -d "videos" ]; then
+            echo "🗑️  در حال حذف پوشه videos..."
+            rm -rf videos
+            echo "✅ پوشه videos حذف شد"
+          else
+            echo "ℹ️  پوشه videos وجود ندارد، کاری انجام نشد"
+          fi
+
+      - name: ثبت و ارسال تغییرات
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "ℹ️  هیچ تغییری برای commit وجود ندارد"
+          else
+            git commit -m "🧹 پاکسازی پوشه videos [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+            echo "✅ تغییرات با موفقیت push شد"
+          fi
